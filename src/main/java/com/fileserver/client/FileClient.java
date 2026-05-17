@@ -4,28 +4,55 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.Scanner;
 
 public class FileClient {
 
-    private static final String HOST = "localhost";
     private static final int PORT = 5000;
 
     public static void main(String[] args) {
-        System.out.println("[Client] Connecting to " + HOST + ":" + PORT);
+        Scanner scanner = new Scanner(System.in);
 
-        try (Socket socket = new Socket(HOST, PORT)) {
+        System.out.print("Enter server IP (press Enter for localhost): ");
+        String host = scanner.nextLine().trim();
+        if (host.isEmpty()) host = "localhost";
+
+        System.out.print("Enter username: ");
+        String username = scanner.nextLine().trim();
+
+        System.out.print("Enter password: ");
+        String password = scanner.nextLine().trim();
+
+        System.out.println("[Client] Connecting to " + host + ":" + PORT);
+
+        try (Socket socket = new Socket(host, PORT)) {
             System.out.println("[Client] Connected!");
 
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(socket.getInputStream()));
-
             PrintWriter writer = new PrintWriter(
                     socket.getOutputStream(), true);
 
-            writer.println("Hello from client!");
+            // Send AUTH as first packet
+            writer.println("AUTH|" + username + "|" + password);
 
             String response = reader.readLine();
-            System.out.println("[Client] Server replied: " + response);
+            System.out.println("[Client] Server: " + response);
+
+            if (!response.startsWith("OK")) {
+                System.out.println("[Client] Authentication failed. Disconnecting.");
+                return;
+            }
+
+            // After auth, send commands
+            System.out.println("[Client] Authenticated! Type commands (or 'quit' to exit):");
+            while (true) {
+                System.out.print("> ");
+                String command = scanner.nextLine().trim();
+                if (command.equalsIgnoreCase("quit")) break;
+                writer.println(command);
+                System.out.println("[Client] Server: " + reader.readLine());
+            }
 
         } catch (Exception e) {
             System.out.println("[Client] Error: " + e.getMessage());

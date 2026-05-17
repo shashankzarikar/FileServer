@@ -1,40 +1,37 @@
 package com.fileserver.server;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class FileServer {
 
     private static final int PORT = 5000;
+    private static final int MAX_CLIENTS = 10;
 
     public static void main(String[] args) {
-        System.out.println("[Server] Starting on port " + PORT);
+        AuthService authService = new AuthService();
+        ExecutorService threadPool = Executors.newFixedThreadPool(MAX_CLIENTS);
 
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("[Server] Waiting for client...");
+            String lanIP = InetAddress.getLocalHost().getHostAddress();
+            System.out.println("[Server] FileServer started");
+            System.out.println("[Server] LAN IP : " + lanIP);
+            System.out.println("[Server] Port   : " + PORT);
+            System.out.println("[Server] Max clients: " + MAX_CLIENTS);
+            System.out.println("[Server] Waiting for connections...");
 
-            Socket clientSocket = serverSocket.accept();
-            System.out.println("[Server] Client connected: "
-                    + clientSocket.getInetAddress().getHostAddress());
-
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(clientSocket.getInputStream()));
-
-            PrintWriter writer = new PrintWriter(
-                    clientSocket.getOutputStream(), true);
-
-            String message = reader.readLine();
-            System.out.println("[Server] Received: " + message);
-
-            writer.println("HELLO|Server received: " + message);
-
-            clientSocket.close();
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                threadPool.execute(new ClientHandler(clientSocket, authService));
+            }
 
         } catch (Exception e) {
-            System.out.println("[Server] Error: " + e.getMessage());
+            System.out.println("[Server] Fatal error: " + e.getMessage());
+        } finally {
+            threadPool.shutdown();
         }
     }
 }
