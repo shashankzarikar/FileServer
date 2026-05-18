@@ -13,6 +13,7 @@ public class FileServer {
 
     public static void main(String[] args) {
         AuthService authService = new AuthService();
+        FileService fileService = new FileService();
         ExecutorService threadPool = Executors.newFixedThreadPool(MAX_CLIENTS);
 
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
@@ -25,7 +26,7 @@ public class FileServer {
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                threadPool.execute(new ClientHandler(clientSocket, authService));
+                threadPool.execute(new ClientHandler(clientSocket, authService, fileService));
             }
 
         } catch (Exception e) {

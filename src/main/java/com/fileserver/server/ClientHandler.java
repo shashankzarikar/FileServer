@@ -9,11 +9,13 @@ public class ClientHandler implements Runnable {
 
     private final Socket clientSocket;
     private final AuthService authService;
+    private final FileService fileService;
     private String loggedInUser = null;
 
-    public ClientHandler(Socket clientSocket, AuthService authService) {
+    public ClientHandler(Socket clientSocket, AuthService authService, FileService fileService) {
         this.clientSocket = clientSocket;
         this.authService = authService;
+        this.fileService = fileService;
     }
 
     @Override
@@ -27,6 +29,7 @@ public class ClientHandler implements Runnable {
             PrintWriter writer = new PrintWriter(
                     clientSocket.getOutputStream(), true);
 
+            // First packet must be AUTH
             String firstPacket = reader.readLine();
 
             if (firstPacket == null || !firstPacket.startsWith("AUTH|")) {
@@ -36,16 +39,15 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
-            // AUTH|username|password
-            String[] parts = firstPacket.split("\\|");
-            if (parts.length != 3) {
+            String[] authParts = firstPacket.split("\\|");
+            if (authParts.length != 3) {
                 writer.println("ERROR|Invalid AUTH format. Use AUTH|username|password");
                 clientSocket.close();
                 return;
             }
 
-            String username = parts[1];
-            String password = parts[2];
+            String username = authParts[1];
+            String password = authParts[2];
 
             if (authService.authenticate(username, password)) {
                 loggedInUser = username;
@@ -58,11 +60,11 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
-            // More commands will be handled here in Day 4
+            // Command loop — runs until client disconnects
             String command;
             while ((command = reader.readLine()) != null) {
                 System.out.println("[" + loggedInUser + "] Command: " + command);
-                writer.println("OK|Command received: " + command);
+                handleCommand(command, writer);
             }
 
         } catch (Exception e) {
@@ -74,6 +76,26 @@ public class ClientHandler implements Runnable {
             } catch (Exception e) {
                 System.out.println("[Server] Could not close socket: " + e.getMessage());
             }
+        }
+    }
+
+    private void handleCommand(String command, PrintWriter writer) {
+        if (command.equals("LIST")) {
+            writer.println(fileService.listFiles(loggedInUser));
+
+        } else if (command.startsWith("DELETE|")) {
+            String[] parts = command.split("\\|");
+            if (parts.length != 2) {
+                writer.println("ERROR|Invalid DELETE format. Use DELETE|filename");
+                return;
+            }
+            writer.println(fileService.deleteFile(loggedInUser, parts[1]));
+
+        } else if (command.equals("QUIT")) {
+            writer.println("OK|Goodbye " + loggedInUser);
+
+        } else {
+            writer.println("ERROR|Unknown command: " + command);
         }
     }
 }
