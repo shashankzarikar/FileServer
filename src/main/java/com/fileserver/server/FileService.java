@@ -1,12 +1,14 @@
 package com.fileserver.server;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.StandardOpenOption;
+import java.io.DataOutputStream;
 
 public class FileService {
 
@@ -109,6 +111,44 @@ public class FileService {
 
         } catch (Exception e) {
             return "ERROR|" + e.getMessage();
+        }
+    }
+    public String prepareDownload(String username, String filename) {
+        try {
+            String userDirPath = new File(getUserDir(username)).getCanonicalPath();
+            File targetFile = new File(getUserDir(username), filename);
+            String targetPath = targetFile.getCanonicalPath();
+
+            if (!targetPath.startsWith(userDirPath)) {
+                return "ERROR|Access denied";
+            }
+
+            if (!targetFile.exists()) {
+                return "ERROR|File not found";
+            }
+
+            return "SIZE|" + targetFile.length();
+
+        } catch (Exception e) {
+            return "ERROR|" + e.getMessage();
+        }
+    }
+
+    public void sendFile(String username, String filename, DataOutputStream out) throws Exception {
+        File targetFile = new File(getUserDir(username), filename);
+        long fileSize = targetFile.length();
+
+        try (FileInputStream fis = new FileInputStream(targetFile)) {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int bytesRead;
+            long totalSent = 0;
+
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+                totalSent += bytesRead;
+            }
+            out.flush();
+            System.out.println("[FileService] Sent " + totalSent + " of " + fileSize + " bytes");
         }
     }
 }

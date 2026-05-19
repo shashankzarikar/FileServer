@@ -1,13 +1,12 @@
 package com.fileserver.client;
 
-import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.PrintWriter;
+import java.io.FileOutputStream;
 import java.net.Socket;
 import java.util.Scanner;
-import java.io.File;
 
 public class FileClient {
 
@@ -32,15 +31,12 @@ public class FileClient {
         try (Socket socket = new Socket(host, PORT)) {
             System.out.println("[Client] Connected!");
 
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(socket.getInputStream()));
-            PrintWriter writer = new PrintWriter(
-                    socket.getOutputStream(), true);
-            OutputStream rawOut = socket.getOutputStream();
+            DataInputStream in = new DataInputStream(socket.getInputStream());
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
 
             // AUTH
-            writer.println("AUTH|" + username + "|" + password);
-            String response = reader.readLine();
+            out.writeUTF("AUTH|" + username + "|" + password);
+            String response = in.readUTF();
             System.out.println("[Client] Server: " + response);
 
             if (!response.startsWith("OK")) {
@@ -49,20 +45,20 @@ public class FileClient {
             }
 
             System.out.println("[Client] Authenticated!");
-            System.out.println("Commands: LIST | UPLOAD|filepath | DELETE|filename | QUIT");
+            System.out.println("Commands: LIST | UPLOAD|filepath | DOWNLOAD|filename | DELETE|filename | QUIT");
 
             while (true) {
                 System.out.print("> ");
                 String input = scanner.nextLine().trim();
 
                 if (input.equalsIgnoreCase("QUIT")) {
-                    writer.println("QUIT");
-                    System.out.println("[Client] Server: " + reader.readLine());
+                    out.writeUTF("QUIT");
+                    System.out.println("[Client] Server: " + in.readUTF());
                     break;
 
                 } else if (input.equals("LIST")) {
-                    writer.println("LIST");
-                    System.out.println("[Client] Server: " + reader.readLine());
+                    out.writeUTF("LIST");
+                    System.out.println("[Client] Server: " + in.readUTF());
 
                 } else if (input.startsWith("UPLOAD|")) {
                     String filePath = input.substring(7);
@@ -76,36 +72,61 @@ public class FileClient {
                     long fileSize = file.length();
                     String filename = file.getName();
 
-                    // Send UPLOAD command with filename and size
-                    writer.println("UPLOAD|" + filename + "|" + fileSize);
+                    out.writeUTF("UPLOAD|" + filename + "|" + fileSize);
 
-                    // Wait for READY
-                    String ready = reader.readLine();
+                    String ready = in.readUTF();
                     if (!ready.equals("READY")) {
                         System.out.println("[Client] Server not ready: " + ready);
                         continue;
                     }
 
-                    // Stream file bytes in 8KB chunks
                     System.out.println("[Client] Uploading " + filename + " (" + fileSize + " bytes)...");
                     try (FileInputStream fis = new FileInputStream(file)) {
                         byte[] buffer = new byte[BUFFER_SIZE];
                         int bytesRead;
-                        long totalSent = 0;
-
                         while ((bytesRead = fis.read(buffer)) != -1) {
-                            rawOut.write(buffer, 0, bytesRead);
-                            totalSent += bytesRead;
+                            socket.getOutputStream().write(buffer, 0, bytesRead);
                         }
-                        rawOut.flush();
+                        socket.getOutputStream().flush();
                     }
 
-                    String result = reader.readLine();
-                    System.out.println("[Client] Server: " + result);
+                    System.out.println("[Client] Server: " + in.readUTF());
 
+                } else if (input.startsWith("DOWNLOAD|")) {
+                    String filename = input.substring(9);
+
+                    out.writeUTF("DOWNLOAD|" + filename);
+
+                    String sizeResponse = in.readUTF();
+                    if (!sizeResponse.startsWith("SIZE|")) {
+                        System.out.println("[Client] Server: " + sizeResponse);
+                        continue;
+                    }
+
+                    long fileSize = Long.parseLong(sizeResponse.split("\\|")[1]);
+                    System.out.println("[Client] File size: " + fileSize + " bytes. Downloading...");
+
+                    out.writeUTF("READY");
+
+                    File outputFile = new File(filename);
+                    try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                        long remaining = fileSize;
+                        byte[] buffer = new byte[BUFFER_SIZE];
+
+                        while (remaining > 0) {
+                            int toRead = (int) Math.min(BUFFER_SIZE, remaining);
+                            in.readFully(buffer, 0, toRead);
+                            fos.write(buffer, 0, toRead);
+                            remaining -= toRead;
+                        }
+                        fos.flush();
+                    }
+
+                    System.out.println("[Client] Downloaded: " + outputFile.getAbsolutePath());
+                    System.out.println("[Client] Size: " + outputFile.length() + " bytes");
                 } else if (input.startsWith("DELETE|")) {
-                    writer.println(input);
-                    System.out.println("[Client] Server: " + reader.readLine());
+                    out.writeUTF(input);
+                    System.out.println("[Client] Server: " + in.readUTF());
 
                 } else {
                     System.out.println("[Client] Unknown command.");

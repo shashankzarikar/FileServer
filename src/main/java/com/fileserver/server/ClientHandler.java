@@ -1,8 +1,7 @@
 package com.fileserver.server;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.net.Socket;
 
 public class ClientHandler implements Runnable {
@@ -24,16 +23,14 @@ public class ClientHandler implements Runnable {
         System.out.println("[Server] Client connected: " + clientIP);
 
         try {
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(clientSocket.getInputStream()));
-            PrintWriter writer = new PrintWriter(
-                    clientSocket.getOutputStream(), true);
+            DataInputStream in = new DataInputStream(clientSocket.getInputStream());
+            DataOutputStream out = new DataOutputStream(clientSocket.getOutputStream());
 
             // First packet must be AUTH
-            String firstPacket = reader.readLine();
+            String firstPacket = in.readUTF();
 
             if (firstPacket == null || !firstPacket.startsWith("AUTH|")) {
-                writer.println("ERROR|First command must be AUTH");
+                out.writeUTF("ERROR|First command must be AUTH");
                 clientSocket.close();
                 System.out.println("[Server] Rejected " + clientIP + " — no AUTH");
                 return;
@@ -41,7 +38,7 @@ public class ClientHandler implements Runnable {
 
             String[] authParts = firstPacket.split("\\|");
             if (authParts.length != 3) {
-                writer.println("ERROR|Invalid AUTH format. Use AUTH|username|password");
+                out.writeUTF("ERROR|Invalid AUTH format. Use AUTH|username|password");
                 clientSocket.close();
                 return;
             }
@@ -51,20 +48,21 @@ public class ClientHandler implements Runnable {
 
             if (authService.authenticate(username, password)) {
                 loggedInUser = username;
-                writer.println("OK|Welcome " + username);
+                out.writeUTF("OK|Welcome " + username);
                 System.out.println("[Server] Auth success: " + username);
             } else {
-                writer.println("ERROR|Invalid credentials");
+                out.writeUTF("ERROR|Invalid credentials");
                 clientSocket.close();
                 System.out.println("[Server] Auth failed for: " + username);
                 return;
             }
 
             // Command loop
-            String command;
-            while ((command = reader.readLine()) != null) {
+            while (true) {
+                String command = in.readUTF();
                 System.out.println("[" + loggedInUser + "] Command: " + command);
-                handleCommand(command, reader, writer);
+                handleCommand(command, in, out);
+                if (command.equals("QUIT")) break;
             }
 
         } catch (Exception e) {
@@ -79,50 +77,73 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    private void handleCommand(String command, BufferedReader reader, PrintWriter writer) {
+    private void handleCommand(String command, DataInputStream in, DataOutputStream out) {
         try {
             if (command.equals("LIST")) {
-                writer.println(fileService.listFiles(loggedInUser));
+                out.writeUTF(fileService.listFiles(loggedInUser));
 
             } else if (command.startsWith("UPLOAD|")) {
-                // UPLOAD|filename|filesize
                 String[] parts = command.split("\\|");
                 if (parts.length != 3) {
-                    writer.println("ERROR|Invalid UPLOAD format. Use UPLOAD|filename|filesize");
+                    out.writeUTF("ERROR|Invalid UPLOAD format. Use UPLOAD|filename|filesize");
                     return;
                 }
 
                 String filename = parts[1];
                 long fileSize = Long.parseLong(parts[2]);
 
-                // Tell client we are ready to receive bytes
-                writer.println("READY");
+                out.writeUTF("READY");
 
-                // Receive raw bytes directly from the socket input stream
                 String result = fileService.receiveFile(
                         loggedInUser, filename, fileSize,
                         clientSocket.getInputStream());
 
-                writer.println(result);
+                out.writeUTF(result);
                 System.out.println("[" + loggedInUser + "] Upload result: " + result);
 
-            } else if (command.startsWith("DELETE|")) {
+            }  else if (command.startsWith("DOWNLOAD|")) {
                 String[] parts = command.split("\\|");
                 if (parts.length != 2) {
-                    writer.println("ERROR|Invalid DELETE format. Use DELETE|filename");
+                    out.writeUTF("ERROR|Invalid DOWNLOAD format. Use DOWNLOAD|filename");
                     return;
                 }
-                writer.println(fileService.deleteFile(loggedInUser, parts[1]));
+
+                String filename = parts[1];
+                String sizeResponse = fileService.prepareDownload(loggedInUser, filename);
+                out.writeUTF(sizeResponse);
+
+                if (!sizeResponse.startsWith("SIZE|")) {
+                    return;
+                }
+
+                String ready = in.readUTF();
+                if (!ready.equals("READY")) {
+                    return;
+                }
+
+                System.out.println("[" + loggedInUser + "] Downloading: " + filename);
+                fileService.sendFile(loggedInUser, filename, out);
+                System.out.println("[" + loggedInUser + "] Download complete: " + filename);
+
+            }else if (command.startsWith("DELETE|")) {
+                String[] parts = command.split("\\|");
+                if (parts.length != 2) {
+                    out.writeUTF("ERROR|Invalid DELETE format. Use DELETE|filename");
+                    return;
+                }
+                out.writeUTF(fileService.deleteFile(loggedInUser, parts[1]));
 
             } else if (command.equals("QUIT")) {
-                writer.println("OK|Goodbye " + loggedInUser);
+                out.writeUTF("OK|Goodbye " + loggedInUser);
 
             } else {
-                writer.println("ERROR|Unknown command: " + command);
+                out.writeUTF("ERROR|Unknown command: " + command);
             }
 
         } catch (Exception e) {
-            writer.println("ERROR|" + e.getMessage());
+            try {
+                out.writeUTF("ERROR|" + e.getMessage());
+            } catch (Exception ignored) {}
         }
     }
 }
