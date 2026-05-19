@@ -1,12 +1,17 @@
 package com.fileserver.server;
 
 import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.file.StandardOpenOption;
 
 public class FileService {
 
     private static final String STORAGE_ROOT = "storage";
+    private static final int BUFFER_SIZE = 8192;
 
     public FileService() {
         new File(STORAGE_ROOT).mkdirs();
@@ -36,8 +41,6 @@ public class FileService {
 
     public String deleteFile(String username, String filename) {
         try {
-            // Path traversal protection
-            // Resolve the full path and verify it stays inside the user's directory
             String userDirPath = new File(getUserDir(username)).getCanonicalPath();
             File targetFile = new File(getUserDir(username), filename);
             String targetPath = targetFile.getCanonicalPath();
@@ -52,6 +55,57 @@ public class FileService {
 
             targetFile.delete();
             return "OK|File deleted: " + filename;
+
+        } catch (Exception e) {
+            return "ERROR|" + e.getMessage();
+        }
+    }
+
+    public String receiveFile(String username, String filename,
+                              long fileSize, InputStream inputStream) {
+        try {
+            // Path traversal protection
+            String userDirPath = new File(getUserDir(username)).getCanonicalPath();
+            File targetFile = new File(getUserDir(username), filename);
+            String targetPath = targetFile.getCanonicalPath();
+
+            if (!targetPath.startsWith(userDirPath)) {
+                return "ERROR|Access denied";
+            }
+
+            // Conflict resolution
+            if (targetFile.exists()) {
+                String timestamp = String.valueOf(System.currentTimeMillis());
+                String newName = filename.contains(".")
+                        ? filename.substring(0, filename.lastIndexOf("."))
+                        + "_" + timestamp
+                        + filename.substring(filename.lastIndexOf("."))
+                        : filename + "_" + timestamp;
+                targetFile = new File(getUserDir(username), newName);
+                System.out.println("[FileService] File exists — saving as: " + newName);
+            }
+
+            // Use FileOutputStream directly — FileLock via its channel
+            try (FileOutputStream fos = new FileOutputStream(targetFile);
+                 FileChannel channel = fos.getChannel();
+                 FileLock lock = channel.lock()) {
+
+                byte[] buffer = new byte[BUFFER_SIZE];
+                long remaining = fileSize;
+                int bytesRead;
+
+                while (remaining > 0) {
+                    int toRead = (int) Math.min(BUFFER_SIZE, remaining);
+                    bytesRead = inputStream.read(buffer, 0, toRead);
+                    if (bytesRead == -1) break;
+                    fos.write(buffer, 0, bytesRead);
+                    remaining -= bytesRead;
+                }
+
+                fos.flush();
+            }
+
+            return "DONE|" + targetFile.getName();
 
         } catch (Exception e) {
             return "ERROR|" + e.getMessage();

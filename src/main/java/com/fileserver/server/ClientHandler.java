@@ -60,11 +60,11 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
-            // Command loop — runs until client disconnects
+            // Command loop
             String command;
             while ((command = reader.readLine()) != null) {
                 System.out.println("[" + loggedInUser + "] Command: " + command);
-                handleCommand(command, writer);
+                handleCommand(command, reader, writer);
             }
 
         } catch (Exception e) {
@@ -79,23 +79,50 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    private void handleCommand(String command, PrintWriter writer) {
-        if (command.equals("LIST")) {
-            writer.println(fileService.listFiles(loggedInUser));
+    private void handleCommand(String command, BufferedReader reader, PrintWriter writer) {
+        try {
+            if (command.equals("LIST")) {
+                writer.println(fileService.listFiles(loggedInUser));
 
-        } else if (command.startsWith("DELETE|")) {
-            String[] parts = command.split("\\|");
-            if (parts.length != 2) {
-                writer.println("ERROR|Invalid DELETE format. Use DELETE|filename");
-                return;
+            } else if (command.startsWith("UPLOAD|")) {
+                // UPLOAD|filename|filesize
+                String[] parts = command.split("\\|");
+                if (parts.length != 3) {
+                    writer.println("ERROR|Invalid UPLOAD format. Use UPLOAD|filename|filesize");
+                    return;
+                }
+
+                String filename = parts[1];
+                long fileSize = Long.parseLong(parts[2]);
+
+                // Tell client we are ready to receive bytes
+                writer.println("READY");
+
+                // Receive raw bytes directly from the socket input stream
+                String result = fileService.receiveFile(
+                        loggedInUser, filename, fileSize,
+                        clientSocket.getInputStream());
+
+                writer.println(result);
+                System.out.println("[" + loggedInUser + "] Upload result: " + result);
+
+            } else if (command.startsWith("DELETE|")) {
+                String[] parts = command.split("\\|");
+                if (parts.length != 2) {
+                    writer.println("ERROR|Invalid DELETE format. Use DELETE|filename");
+                    return;
+                }
+                writer.println(fileService.deleteFile(loggedInUser, parts[1]));
+
+            } else if (command.equals("QUIT")) {
+                writer.println("OK|Goodbye " + loggedInUser);
+
+            } else {
+                writer.println("ERROR|Unknown command: " + command);
             }
-            writer.println(fileService.deleteFile(loggedInUser, parts[1]));
 
-        } else if (command.equals("QUIT")) {
-            writer.println("OK|Goodbye " + loggedInUser);
-
-        } else {
-            writer.println("ERROR|Unknown command: " + command);
+        } catch (Exception e) {
+            writer.println("ERROR|" + e.getMessage());
         }
     }
 }
