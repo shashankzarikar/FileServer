@@ -12,21 +12,22 @@ public class FileServer {
     private static final int MAX_CLIENTS = 10;
 
     public static void main(String[] args) {
-        AuthService authService = new AuthService();
+        UserStore userStore = new UserStore();
+        AuthService authService = new AuthService(userStore);
         FileService fileService = new FileService();
         ExecutorService threadPool = Executors.newFixedThreadPool(MAX_CLIENTS);
 
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
             String lanIP = InetAddress.getLocalHost().getHostAddress();
             System.out.println("[Server] FileServer started");
-            System.out.println("[Server] LAN IP : " + lanIP);
-            System.out.println("[Server] Port   : " + PORT);
+            System.out.println("[Server] LAN IP     : " + lanIP);
+            System.out.println("[Server] Port       : " + PORT);
             System.out.println("[Server] Max clients: " + MAX_CLIENTS);
             System.out.println("[Server] Waiting for connections...");
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                threadPool.execute(new ClientHandler(clientSocket, authService, fileService));
+                threadPool.execute(new ClientHandler(clientSocket, authService, userStore, fileService));
             }
 
         } catch (Exception e) {

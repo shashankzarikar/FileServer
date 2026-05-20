@@ -56,7 +56,10 @@ public class FileClient {
                     System.out.println("[Client] Server: " + in.readUTF());
                     break;
 
-                } else if (input.equals("LIST")) {
+                } else if (input.startsWith("REGISTER|")) {
+                out.writeUTF(input);
+                System.out.println("[Client] Server: " + in.readUTF());
+                }else if (input.equals("LIST")) {
                     out.writeUTF("LIST");
                     System.out.println("[Client] Server: " + in.readUTF());
 
