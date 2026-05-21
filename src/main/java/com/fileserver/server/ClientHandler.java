@@ -187,7 +187,83 @@ public class ClientHandler implements Runnable {
                 } else {
                     out.writeUTF("ERROR|Username already exists: " + parts[1]);
                 }
+            } else if (command.startsWith("SHARE|")) {
+                String[] parts = command.split("\\|");
+                if (parts.length != 2) {
+                    out.writeUTF("ERROR|Invalid SHARE format. Use SHARE|filename");
+                    return;
+                }
 
+                String filename = parts[1];
+
+                // Verify file exists in user's folder
+                String checkResponse = fileService.prepareDownload(loggedInUser, filename);
+                if (!checkResponse.startsWith("SIZE|")) {
+                    out.writeUTF("ERROR|File not found: " + filename);
+                    return;
+                }
+
+                String token = userStore.createShareToken(loggedInUser, filename);
+                if (token != null) {
+                    out.writeUTF("OK|Share token: " + token + " (valid 24 hours)");
+                    System.out.println("[" + loggedInUser + "] Shared: " + filename + " Token: " + token);
+                } else {
+                    out.writeUTF("ERROR|Could not create share token");
+                }
+
+            } else if (command.startsWith("ACCESS|")) {
+                String[] parts = command.split("\\|");
+                if (parts.length != 2) {
+                    out.writeUTF("ERROR|Invalid ACCESS format. Use ACCESS|token");
+                    return;
+                }
+
+                String token = parts[1];
+                String[] shareInfo = userStore.resolveShareToken(token);
+
+                if (shareInfo == null) {
+                    out.writeUTF("ERROR|Invalid or expired token");
+                    return;
+                }
+
+                String owner = shareInfo[0];
+                String filename = shareInfo[1];
+
+                String sizeResponse = fileService.prepareDownload(owner, filename);
+                // Append filename so client knows what to save as
+                String sizeWithName = sizeResponse + "|" + filename;
+                out.writeUTF(sizeWithName);
+
+                if (!sizeResponse.startsWith("SIZE|")) return;
+
+                String ready = in.readUTF();
+                if (!ready.equals("READY")) return;
+
+                System.out.println("[" + loggedInUser + "] Accessing shared file: "
+                        + owner + "/" + filename + " via token: " + token);
+                fileService.sendFile(owner, filename, out);
+
+            } else if (command.startsWith("REVOKE|")) {
+                String[] parts = command.split("\\|");
+                if (parts.length != 2) {
+                    out.writeUTF("ERROR|Invalid REVOKE format. Use REVOKE|token");
+                    return;
+                }
+
+                String token = parts[1];
+                if (userStore.revokeShareToken(token, loggedInUser)) {
+                    out.writeUTF("OK|Token revoked: " + token);
+                    System.out.println("[" + loggedInUser + "] Revoked token: " + token);
+                } else {
+                    out.writeUTF("ERROR|Token not found or access denied");
+                }
+            } else if (command.startsWith("TOKENINFO|")) {
+                String[] parts = command.split("\\|");
+                if (parts.length != 2) {
+                    out.writeUTF("ERROR|Invalid format. Use TOKENINFO|token");
+                    return;
+                }
+                out.writeUTF(userStore.getTokenInfo(parts[1]));
             } else if (command.equals("QUIT")) {
                 out.writeUTF("OK|Goodbye " + loggedInUser);
 

@@ -107,20 +107,35 @@ public class FileClient {
                     }
 
                     long fileSize = Long.parseLong(sizeResponse.split("\\|")[1]);
+                    String saveAs = filename.contains("/") ? filename.split("/", 2)[1] : filename;
                     System.out.println("[Client] File size: " + fileSize + " bytes. Downloading...");
 
                     out.writeUTF("READY");
 
-                    // Strip username prefix if admin downloaded another user's file (e.g. shashank/file.pdf)
-                    String saveAs = filename.contains("/") ? filename.split("/", 2)[1] : filename;
-                    File outputFile = new File(saveAs);
+                    // Ask user where to save
+                    System.out.print("[Client] Enter download path (press Enter for Downloads folder): ");
+                    String customPath = scanner.nextLine().trim();
 
-                    try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                    File outputFile;
+                    if (customPath.isEmpty()) {
+                        String downloadPath = System.getProperty("user.home") + File.separator + "Downloads";
+                        File downloadDir = new File(downloadPath);
+                        if (!downloadDir.exists()) downloadDir = new File(System.getProperty("user.dir"));
+                        downloadDir.mkdirs();
+                        outputFile = new File(downloadDir, saveAs);
+                    } else {
+                        File customDir = new File(customPath);
+                        customDir.mkdirs();
+                        outputFile = new File(customDir, saveAs);
+                    }
+
+                    System.out.println("[Client] Saving to: " + outputFile.getAbsolutePath());
+
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outputFile)) {
+                        byte[] buffer = new byte[8192];
                         long remaining = fileSize;
-                        byte[] buffer = new byte[BUFFER_SIZE];
-
                         while (remaining > 0) {
-                            int toRead = (int) Math.min(BUFFER_SIZE, remaining);
+                            int toRead = (int) Math.min(8192, remaining);
                             in.readFully(buffer, 0, toRead);
                             fos.write(buffer, 0, toRead);
                             remaining -= toRead;
@@ -129,12 +144,81 @@ public class FileClient {
                     }
 
                     System.out.println("[Client] Downloaded: " + outputFile.getAbsolutePath());
-                    System.out.println("[Client] Size: " + outputFile.length() + " bytes");
                 } else if (input.startsWith("DELETE|")) {
                     out.writeUTF(input);
                     System.out.println("[Client] Server: " + in.readUTF());
                 } else if (input.equals("LISTUSERS")) {
                     out.writeUTF("LISTUSERS");
+                    System.out.println("[Client] Server: " + in.readUTF());
+                } else if (input.startsWith("SHARE|")) {
+                    out.writeUTF(input);
+                    System.out.println("[Client] Server: " + in.readUTF());
+
+                } else if (input.startsWith("ACCESS|")) {
+                    String token = input.substring(7);
+                    out.writeUTF("ACCESS|" + token);
+
+                    String sizeResponse = in.readUTF();
+                    if (!sizeResponse.startsWith("SIZE|")) {
+                        System.out.println("[Client] Server: " + sizeResponse);
+                        continue;
+                    }
+
+                    String[] sizeParts = sizeResponse.split("\\|");
+                    long fileSize = Long.parseLong(sizeParts[1]);
+                    String sharedFilename = sizeParts.length > 2 ? sizeParts[2] : "shared_" + token;
+                    System.out.println("[Client] Shared file: " + sharedFilename
+                            + " (" + fileSize + " bytes). Downloading...");
+
+                    out.writeUTF("READY");
+
+                    // Ask user where to save
+                    System.out.print("[Client] Enter download path (press Enter for Downloads folder): ");
+                    String customPath = scanner.nextLine().trim();
+
+                    File outputFile;
+                    if (customPath.isEmpty()) {
+                        String downloadPath = System.getProperty("user.home") + File.separator + "Downloads";
+                        File downloadDir = new File(downloadPath);
+                        if (!downloadDir.exists()) downloadDir = new File(System.getProperty("user.dir"));
+                        downloadDir.mkdirs();
+                        outputFile = new File(downloadDir, sharedFilename);
+                    } else {
+                        File customDir = new File(customPath);
+                        customDir.mkdirs();
+                        outputFile = new File(customDir, sharedFilename);
+                    }
+
+                    System.out.println("[Client] Saving to: " + outputFile.getAbsolutePath());
+
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outputFile)) {
+                        byte[] buffer = new byte[8192];
+                        long remaining = fileSize;
+                        while (remaining > 0) {
+                            int toRead = (int) Math.min(8192, remaining);
+                            in.readFully(buffer, 0, toRead);
+                            fos.write(buffer, 0, toRead);
+                            remaining -= toRead;
+                        }
+                        fos.flush();
+                    }
+
+                    System.out.println("[Client] Saved: " + outputFile.getAbsolutePath());
+                } else if (input.startsWith("TOKENINFO|")) {
+                    out.writeUTF(input);
+                    String tokenResponse = in.readUTF();
+                    if (tokenResponse.startsWith("INFO|")) {
+                        String[] parts = tokenResponse.split("\\|");
+                        System.out.println("[Client] Token info:");
+                        System.out.println("         Owner    : " + parts[1]);
+                        System.out.println("         File     : " + parts[2]);
+                        System.out.println("         Expires  : " + parts[3]);
+                        System.out.println("         Use ACCESS|token to download");
+                    } else {
+                        System.out.println("[Client] Server: " + tokenResponse);
+                    }
+                } else if (input.startsWith("REVOKE|")) {
+                    out.writeUTF(input);
                     System.out.println("[Client] Server: " + in.readUTF());
                 } else {
                     System.out.println("[Client] Unknown command.");

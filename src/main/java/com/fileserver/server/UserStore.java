@@ -19,19 +19,30 @@ public class UserStore {
     }
 
     private void initDatabase() {
-        String createTable = """
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    password TEXT NOT NULL,
-                    role TEXT NOT NULL DEFAULT 'USER',
-                    created_at TEXT DEFAULT (datetime('now'))
-                )
-                """;
+        String createUsers = """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'USER',
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """;
 
-        try (Connection conn = connect();
-             PreparedStatement stmt = conn.prepareStatement(createTable)) {
-            stmt.execute();
+        String createShares = """
+            CREATE TABLE IF NOT EXISTS shares (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT UNIQUE NOT NULL,
+                owner TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                expires_at TEXT NOT NULL
+            )
+            """;
+
+        try (Connection conn = connect()) {
+            conn.prepareStatement(createUsers).execute();
+            conn.prepareStatement(createShares).execute();
             createDefaultAdmin();
             System.out.println("[UserStore] Database ready.");
         } catch (Exception e) {
@@ -161,5 +172,104 @@ public class UserStore {
             return "ERROR|" + e.getMessage();
         }
         return sb.toString();
+    }
+    public String createShareToken(String owner, String filename) {
+        // Generate a random 8-character token
+        String token = java.util.UUID.randomUUID().toString().substring(0, 8);
+
+        String insert = """
+            INSERT INTO shares (token, owner, filename, expires_at)
+            VALUES (?, ?, ?, datetime('now', '+24 hours'))
+            """;
+
+        try (Connection conn = connect();
+             PreparedStatement stmt = conn.prepareStatement(insert)) {
+
+            stmt.setString(1, token);
+            stmt.setString(2, owner);
+            stmt.setString(3, filename);
+            stmt.execute();
+            return token;
+
+        } catch (Exception e) {
+            System.out.println("[UserStore] Share error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    public String[] resolveShareToken(String token) {
+        // Returns [owner, filename] if token is valid and not expired, null otherwise
+        String query = """
+            SELECT owner, filename FROM shares
+            WHERE token = ?
+            AND datetime('now') < datetime(expires_at)
+            """;
+
+        try (Connection conn = connect();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, token);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                return new String[]{ rs.getString("owner"), rs.getString("filename") };
+            }
+
+        } catch (Exception e) {
+            System.out.println("[UserStore] Resolve token error: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public boolean revokeShareToken(String token, String requestingUser) {
+        // Only the owner or admin can revoke a token
+        String query = "SELECT owner FROM shares WHERE token = ?";
+        String delete = "DELETE FROM shares WHERE token = ?";
+
+        try (Connection conn = connect()) {
+            PreparedStatement checkStmt = conn.prepareStatement(query);
+            checkStmt.setString(1, token);
+            ResultSet rs = checkStmt.executeQuery();
+
+            if (!rs.next()) return false;
+
+            String owner = rs.getString("owner");
+            if (!owner.equals(requestingUser) && !getRole(requestingUser).equals("ADMIN")) {
+                return false;
+            }
+
+            PreparedStatement deleteStmt = conn.prepareStatement(delete);
+            deleteStmt.setString(1, token);
+            deleteStmt.execute();
+            return true;
+
+        } catch (Exception e) {
+            System.out.println("[UserStore] Revoke error: " + e.getMessage());
+            return false;
+        }
+    }
+    public String getTokenInfo(String token) {
+        String query = """
+            SELECT owner, filename, expires_at FROM shares
+            WHERE token = ?
+            AND datetime('now') < datetime(expires_at)
+            """;
+
+        try (Connection conn = connect();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, token);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                return "INFO|" + rs.getString("owner") + "|"
+                        + rs.getString("filename") + "|"
+                        + rs.getString("expires_at");
+            }
+
+        } catch (Exception e) {
+            System.out.println("[UserStore] TokenInfo error: " + e.getMessage());
+        }
+        return "ERROR|Invalid or expired token";
     }
 }
