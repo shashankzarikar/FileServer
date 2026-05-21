@@ -111,7 +111,10 @@ public class FileClient {
 
                     out.writeUTF("READY");
 
-                    File outputFile = new File(filename);
+                    // Strip username prefix if admin downloaded another user's file (e.g. shashank/file.pdf)
+                    String saveAs = filename.contains("/") ? filename.split("/", 2)[1] : filename;
+                    File outputFile = new File(saveAs);
+
                     try (FileOutputStream fos = new FileOutputStream(outputFile)) {
                         long remaining = fileSize;
                         byte[] buffer = new byte[BUFFER_SIZE];
@@ -130,7 +133,9 @@ public class FileClient {
                 } else if (input.startsWith("DELETE|")) {
                     out.writeUTF(input);
                     System.out.println("[Client] Server: " + in.readUTF());
-
+                } else if (input.equals("LISTUSERS")) {
+                    out.writeUTF("LISTUSERS");
+                    System.out.println("[Client] Server: " + in.readUTF());
                 } else {
                     System.out.println("[Client] Unknown command.");
                 }

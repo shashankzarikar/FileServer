@@ -89,7 +89,20 @@ public class ClientHandler implements Runnable {
     private void handleCommand(String command, DataInputStream in, DataOutputStream out) {
         try {
             if (command.equals("LIST")) {
-                out.writeUTF(fileService.listFiles(loggedInUser));
+                // Admin sees all files, regular user sees only their own
+                if (userRole.equals("ADMIN")) {
+                    out.writeUTF(fileService.listAllFiles());
+                } else {
+                    out.writeUTF(fileService.listFiles(loggedInUser));
+                }
+
+            } else if (command.equals("LISTUSERS")) {
+                // Admin only command
+                if (!userRole.equals("ADMIN")) {
+                    out.writeUTF("ERROR|Only admin can list users");
+                    return;
+                }
+                out.writeUTF(userStore.listUsers());
 
             } else if (command.startsWith("UPLOAD|")) {
                 String[] parts = command.split("\\|");
@@ -105,29 +118,60 @@ public class ClientHandler implements Runnable {
                 out.writeUTF(result);
 
             } else if (command.startsWith("DOWNLOAD|")) {
+                // Format: DOWNLOAD|filename  or  DOWNLOAD|username/filename (admin only)
                 String[] parts = command.split("\\|");
                 if (parts.length != 2) {
-                    out.writeUTF("ERROR|Invalid DOWNLOAD format. Use DOWNLOAD|filename");
+                    out.writeUTF("ERROR|Invalid DOWNLOAD format");
                     return;
                 }
-                String filename = parts[1];
-                String sizeResponse = fileService.prepareDownload(loggedInUser, filename);
+
+                String target = parts[1];
+                String targetUser;
+                String filename;
+
+                if (target.contains("/")) {
+                    // Admin downloading another user's file
+                    if (!userRole.equals("ADMIN")) {
+                        out.writeUTF("ERROR|Only admin can access other users files");
+                        return;
+                    }
+                    String[] split = target.split("/", 2);
+                    targetUser = split[0];
+                    filename = split[1];
+                } else {
+                    targetUser = loggedInUser;
+                    filename = target;
+                }
+
+                String sizeResponse = fileService.prepareDownload(targetUser, filename);
                 out.writeUTF(sizeResponse);
                 if (!sizeResponse.startsWith("SIZE|")) return;
                 String ready = in.readUTF();
                 if (!ready.equals("READY")) return;
-                fileService.sendFile(loggedInUser, filename, out);
+                fileService.sendFile(targetUser, filename, out);
 
             } else if (command.startsWith("DELETE|")) {
+                // Format: DELETE|filename  or  DELETE|username/filename (admin only)
                 String[] parts = command.split("\\|");
                 if (parts.length != 2) {
-                    out.writeUTF("ERROR|Invalid DELETE format. Use DELETE|filename");
+                    out.writeUTF("ERROR|Invalid DELETE format");
                     return;
                 }
-                out.writeUTF(fileService.deleteFile(loggedInUser, parts[1]));
+
+                String target = parts[1];
+
+                if (target.contains("/")) {
+                    if (!userRole.equals("ADMIN")) {
+                        out.writeUTF("ERROR|Only admin can delete other users files");
+                        return;
+                    }
+                    String[] split = target.split("/", 2);
+                    out.writeUTF(fileService.deleteFile(split[0], split[1]));
+                } else {
+                    out.writeUTF(fileService.deleteFile(loggedInUser, target));
+                }
 
             } else if (command.startsWith("REGISTER|")) {
-                // Only admin can register new users
                 if (!userRole.equals("ADMIN")) {
                     out.writeUTF("ERROR|Only admin can register new users");
                     return;
@@ -137,13 +181,11 @@ public class ClientHandler implements Runnable {
                     out.writeUTF("ERROR|Invalid REGISTER format. Use REGISTER|username|password");
                     return;
                 }
-                String newUsername = parts[1];
-                String newPassword = parts[2];
-                if (userStore.registerUser(newUsername, newPassword)) {
-                    out.writeUTF("OK|User registered: " + newUsername);
-                    System.out.println("[Admin] Registered new user: " + newUsername);
+                if (userStore.registerUser(parts[1], parts[2])) {
+                    out.writeUTF("OK|User registered: " + parts[1]);
+                    System.out.println("[Admin] Registered new user: " + parts[1]);
                 } else {
-                    out.writeUTF("ERROR|Username already exists: " + newUsername);
+                    out.writeUTF("ERROR|Username already exists: " + parts[1]);
                 }
 
             } else if (command.equals("QUIT")) {

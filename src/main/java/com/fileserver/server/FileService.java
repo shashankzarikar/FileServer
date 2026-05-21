@@ -151,4 +151,41 @@ public class FileService {
             System.out.println("[FileService] Sent " + totalSent + " of " + fileSize + " bytes");
         }
     }
+    public String listAllFiles() {
+        File storageRoot = new File(STORAGE_ROOT);
+        File[] userDirs = storageRoot.listFiles(File::isDirectory);
+
+        if (userDirs == null || userDirs.length == 0) {
+            return "FILES|empty";
+        }
+
+        StringBuilder sb = new StringBuilder("FILES|");
+        boolean first = true;
+
+        for (File userDir : userDirs) {
+            File[] files = userDir.listFiles();
+            if (files == null) continue;
+
+            for (File file : files) {
+                if (!first) sb.append(",");
+                sb.append(userDir.getName()).append("/").append(file.getName());
+                first = false;
+            }
+        }
+
+        return sb.length() > 6 ? sb.toString() : "FILES|empty";
+    }
+
+    public String deleteFileAsAdmin(String targetUsername, String filename) {
+        return deleteFile(targetUsername, filename);
+    }
+
+    public String prepareDownloadAsAdmin(String targetUsername, String filename) {
+        return prepareDownload(targetUsername, filename);
+    }
+
+    public void sendFileAsAdmin(String targetUsername, String filename,
+                                DataOutputStream out) throws Exception {
+        sendFile(targetUsername, filename, out);
+    }
 }

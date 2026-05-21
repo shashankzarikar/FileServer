@@ -142,4 +142,24 @@ public class UserStore {
             throw new RuntimeException("SHA-256 not available", e);
         }
     }
+    public String listUsers() {
+        String query = "SELECT username, role, created_at FROM users";
+        StringBuilder sb = new StringBuilder("USERS|");
+        boolean first = true;
+
+        try (Connection conn = connect();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                if (!first) sb.append(",");
+                sb.append(rs.getString("username"))
+                        .append("(").append(rs.getString("role")).append(")");
+                first = false;
+            }
+        } catch (Exception e) {
+            return "ERROR|" + e.getMessage();
+        }
+        return sb.toString();
+    }
 }
