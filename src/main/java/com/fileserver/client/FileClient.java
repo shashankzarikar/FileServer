@@ -1,3 +1,9 @@
+/**
+ * FileClient — Terminal Version (Legacy)
+ * This is the original terminal-based client without GUI.
+ * Use ClientApp.java for the JavaFX GUI version.
+ * StressTest.java uses the same socket logic for concurrent testing.
+ */
 package com.fileserver.client;
 
 import java.io.DataInputStream;

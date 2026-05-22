@@ -1,3 +1,8 @@
+/**
+ * FileServer — Terminal Version (Legacy)
+ * This is the original terminal-based server without GUI.
+ * Use ServerApp.java for the JavaFX GUI version.
+ */
 package com.fileserver.server;
 
 import java.net.InetAddress;
