@@ -24,3 +24,16 @@ src/
 └── main/java/com/fileserver/
 ├── server/       ← Server-side code
 └── client/       ← Client-side code
+
+## Cross-Platform Test Results
+
+| Component | Platform | Status |
+|---|---|---|
+| FileServer (terminal) | WSL Ubuntu 22.04 — Java 17 | ✅ Verified |
+| ClientApp (JavaFX GUI) | Windows 11 — Java 17 | ✅ Verified |
+| File Upload | Windows → Linux server | ✅ Verified |
+| File Download | Linux server → Windows | ✅ Verified |
+| Authentication | Cross-platform | ✅ Verified |
+
+Server IP during test: 172.28.113.194 (WSL)
+Client IP during test: 192.168.100.111 (Windows)
