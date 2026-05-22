@@ -23,7 +23,29 @@ public class FileServer {
         ExecutorService threadPool = Executors.newFixedThreadPool(MAX_CLIENTS);
 
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            String lanIP = InetAddress.getLocalHost().getHostAddress();
+            String lanIP = "unavailable";
+            java.util.Enumeration<java.net.NetworkInterface> interfaces =
+                    java.net.NetworkInterface.getNetworkInterfaces();
+
+            while (interfaces.hasMoreElements()) {
+                java.net.NetworkInterface ni = interfaces.nextElement();
+
+                if (ni.isLoopback() || !ni.isUp()) continue;
+
+                String displayName = ni.getDisplayName().toLowerCase();
+                if (displayName.contains("wsl") || displayName.contains("vethernet")
+                        || displayName.contains("vmware") || displayName.contains("virtualbox")
+                        || displayName.contains("hyper-v")) continue;
+
+                java.util.Enumeration<java.net.InetAddress> addresses = ni.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    java.net.InetAddress addr = addresses.nextElement();
+                    if (addr instanceof java.net.Inet4Address && !addr.isLoopbackAddress()) {
+                        lanIP = addr.getHostAddress();
+                        break;
+                    }
+                }
+            }
             System.out.println("[Server] FileServer started");
             System.out.println("[Server] LAN IP     : " + lanIP);
             System.out.println("[Server] Port       : " + PORT);

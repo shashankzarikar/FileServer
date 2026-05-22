@@ -129,14 +129,39 @@ public class ServerApp extends Application {
     private void detectLanIP() {
         new Thread(() -> {
             try {
-                String ip = InetAddress.getLocalHost().getHostAddress();
-                Platform.runLater(() ->
-                        lanIPLabel.setText("LAN IP: " + ip)
-                );
+                String ip = "unavailable";
+
+                java.util.Enumeration<java.net.NetworkInterface> interfaces =
+                        java.net.NetworkInterface.getNetworkInterfaces();
+
+                while (interfaces.hasMoreElements()) {
+                    java.net.NetworkInterface ni = interfaces.nextElement();
+
+                    if (ni.isLoopback() || !ni.isUp()) continue;
+
+                    // Skip WSL and virtual adapters
+                    String displayName = ni.getDisplayName().toLowerCase();
+                    if (displayName.contains("wsl") || displayName.contains("vethernet")
+                            || displayName.contains("vmware") || displayName.contains("virtualbox")
+                            || displayName.contains("hyper-v")) continue;
+
+                    java.util.Enumeration<java.net.InetAddress> addresses = ni.getInetAddresses();
+                    while (addresses.hasMoreElements()) {
+                        java.net.InetAddress addr = addresses.nextElement();
+
+                        if (addr instanceof java.net.Inet4Address
+                                && !addr.isLoopbackAddress()) {
+                            ip = addr.getHostAddress();
+                            break;
+                        }
+                    }
+                }
+
+                final String finalIP = ip;
+                Platform.runLater(() -> lanIPLabel.setText("LAN IP: " + finalIP));
+
             } catch (Exception e) {
-                Platform.runLater(() ->
-                        lanIPLabel.setText("LAN IP: unavailable")
-                );
+                Platform.runLater(() -> lanIPLabel.setText("LAN IP: unavailable"));
             }
         }).start();
     }
