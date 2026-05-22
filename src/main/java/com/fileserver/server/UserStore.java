@@ -15,6 +15,7 @@ public class UserStore {
     }
 
     private Connection connect() throws Exception {
+        Class.forName("org.sqlite.JDBC");
         return DriverManager.getConnection(DB_URL);
     }
 
