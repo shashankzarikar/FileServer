@@ -12,6 +12,7 @@ public class ClientHandler implements Runnable {
     private final FileService fileService;
     private String loggedInUser = null;
     private String userRole = null;
+    private java.util.function.Consumer<String> logger = System.out::println;
 
     public ClientHandler(Socket clientSocket, AuthService authService,
                          UserStore userStore, FileService fileService) {
@@ -21,10 +22,14 @@ public class ClientHandler implements Runnable {
         this.fileService = fileService;
     }
 
+    public void setLogger(java.util.function.Consumer<String> logger) {
+        this.logger = logger;
+    }
+
     @Override
     public void run() {
         String clientIP = clientSocket.getInetAddress().getHostAddress();
-        System.out.println("[Server] Client connected: " + clientIP);
+        logger.accept("[Server] Client connected: " + clientIP);
 
         try {
             DataInputStream in = new DataInputStream(clientSocket.getInputStream());
@@ -38,14 +43,12 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
-            // Handle REGISTER before login
             if (firstPacket.startsWith("REGISTER|")) {
                 out.writeUTF("ERROR|Only admin can register users. Login as admin first.");
                 clientSocket.close();
                 return;
             }
 
-            // Handle AUTH
             String[] authParts = firstPacket.split("\\|");
             if (authParts.length != 3) {
                 out.writeUTF("ERROR|Invalid AUTH format. Use AUTH|username|password");
@@ -60,28 +63,27 @@ public class ClientHandler implements Runnable {
                 loggedInUser = username;
                 userRole = authService.getRole(username);
                 out.writeUTF("OK|Welcome " + username + " [" + userRole + "]");
-                System.out.println("[Server] Auth success: " + username + " Role: " + userRole);
+                logger.accept("[Server] Auth success: " + username + " Role: " + userRole);
             } else {
                 out.writeUTF("ERROR|Invalid credentials");
                 clientSocket.close();
-                System.out.println("[Server] Auth failed for: " + username);
+                logger.accept("[Server] Auth failed for: " + username);
                 return;
             }
 
-            // Command loop
             while (true) {
                 String command = in.readUTF();
-                System.out.println("[" + loggedInUser + "] Command: " + command);
+                logger.accept("[" + loggedInUser + "] Command: " + command);
                 handleCommand(command, in, out);
                 if (command.equals("QUIT")) break;
             }
 
         } catch (Exception e) {
-            System.out.println("[Server] Error with client: " + e.getMessage());
+            logger.accept("[Server] Error with client: " + e.getMessage());
         } finally {
             try {
                 clientSocket.close();
-                System.out.println("[Server] Connection closed: " + loggedInUser);
+                logger.accept("[Server] Connection closed: " + loggedInUser);
             } catch (Exception ignored) {}
         }
     }
@@ -89,7 +91,6 @@ public class ClientHandler implements Runnable {
     private void handleCommand(String command, DataInputStream in, DataOutputStream out) {
         try {
             if (command.equals("LIST")) {
-                // Admin sees all files, regular user sees only their own
                 if (userRole.equals("ADMIN")) {
                     out.writeUTF(fileService.listAllFiles());
                 } else {
@@ -97,7 +98,6 @@ public class ClientHandler implements Runnable {
                 }
 
             } else if (command.equals("LISTUSERS")) {
-                // Admin only command
                 if (!userRole.equals("ADMIN")) {
                     out.writeUTF("ERROR|Only admin can list users");
                     return;
@@ -116,9 +116,9 @@ public class ClientHandler implements Runnable {
                 String result = fileService.receiveFile(loggedInUser, filename,
                         fileSize, clientSocket.getInputStream());
                 out.writeUTF(result);
+                logger.accept("[" + loggedInUser + "] Upload result: " + result);
 
             } else if (command.startsWith("DOWNLOAD|")) {
-                // Format: DOWNLOAD|filename  or  DOWNLOAD|username/filename (admin only)
                 String[] parts = command.split("\\|");
                 if (parts.length != 2) {
                     out.writeUTF("ERROR|Invalid DOWNLOAD format");
@@ -130,7 +130,6 @@ public class ClientHandler implements Runnable {
                 String filename;
 
                 if (target.contains("/")) {
-                    // Admin downloading another user's file
                     if (!userRole.equals("ADMIN")) {
                         out.writeUTF("ERROR|Only admin can access other users files");
                         return;
@@ -148,10 +147,11 @@ public class ClientHandler implements Runnable {
                 if (!sizeResponse.startsWith("SIZE|")) return;
                 String ready = in.readUTF();
                 if (!ready.equals("READY")) return;
+                logger.accept("[" + loggedInUser + "] Downloading: " + filename);
                 fileService.sendFile(targetUser, filename, out);
+                logger.accept("[" + loggedInUser + "] Download complete: " + filename);
 
             } else if (command.startsWith("DELETE|")) {
-                // Format: DELETE|filename  or  DELETE|username/filename (admin only)
                 String[] parts = command.split("\\|");
                 if (parts.length != 2) {
                     out.writeUTF("ERROR|Invalid DELETE format");
@@ -159,7 +159,6 @@ public class ClientHandler implements Runnable {
                 }
 
                 String target = parts[1];
-
                 if (target.contains("/")) {
                     if (!userRole.equals("ADMIN")) {
                         out.writeUTF("ERROR|Only admin can delete other users files");
@@ -183,30 +182,27 @@ public class ClientHandler implements Runnable {
                 }
                 if (userStore.registerUser(parts[1], parts[2])) {
                     out.writeUTF("OK|User registered: " + parts[1]);
-                    System.out.println("[Admin] Registered new user: " + parts[1]);
+                    logger.accept("[Admin] Registered new user: " + parts[1]);
                 } else {
                     out.writeUTF("ERROR|Username already exists: " + parts[1]);
                 }
+
             } else if (command.startsWith("SHARE|")) {
                 String[] parts = command.split("\\|");
                 if (parts.length != 2) {
                     out.writeUTF("ERROR|Invalid SHARE format. Use SHARE|filename");
                     return;
                 }
-
                 String filename = parts[1];
-
-                // Verify file exists in user's folder
                 String checkResponse = fileService.prepareDownload(loggedInUser, filename);
                 if (!checkResponse.startsWith("SIZE|")) {
                     out.writeUTF("ERROR|File not found: " + filename);
                     return;
                 }
-
                 String token = userStore.createShareToken(loggedInUser, filename);
                 if (token != null) {
                     out.writeUTF("OK|Share token: " + token + " (valid 24 hours)");
-                    System.out.println("[" + loggedInUser + "] Shared: " + filename + " Token: " + token);
+                    logger.accept("[" + loggedInUser + "] Shared: " + filename + " Token: " + token);
                 } else {
                     out.writeUTF("ERROR|Could not create share token");
                 }
@@ -217,29 +213,20 @@ public class ClientHandler implements Runnable {
                     out.writeUTF("ERROR|Invalid ACCESS format. Use ACCESS|token");
                     return;
                 }
-
                 String token = parts[1];
                 String[] shareInfo = userStore.resolveShareToken(token);
-
                 if (shareInfo == null) {
                     out.writeUTF("ERROR|Invalid or expired token");
                     return;
                 }
-
                 String owner = shareInfo[0];
                 String filename = shareInfo[1];
-
                 String sizeResponse = fileService.prepareDownload(owner, filename);
-                // Append filename so client knows what to save as
-                String sizeWithName = sizeResponse + "|" + filename;
-                out.writeUTF(sizeWithName);
-
+                out.writeUTF(sizeResponse + "|" + filename);
                 if (!sizeResponse.startsWith("SIZE|")) return;
-
                 String ready = in.readUTF();
                 if (!ready.equals("READY")) return;
-
-                System.out.println("[" + loggedInUser + "] Accessing shared file: "
+                logger.accept("[" + loggedInUser + "] Accessing shared file: "
                         + owner + "/" + filename + " via token: " + token);
                 fileService.sendFile(owner, filename, out);
 
@@ -249,14 +236,14 @@ public class ClientHandler implements Runnable {
                     out.writeUTF("ERROR|Invalid REVOKE format. Use REVOKE|token");
                     return;
                 }
-
                 String token = parts[1];
                 if (userStore.revokeShareToken(token, loggedInUser)) {
                     out.writeUTF("OK|Token revoked: " + token);
-                    System.out.println("[" + loggedInUser + "] Revoked token: " + token);
+                    logger.accept("[" + loggedInUser + "] Revoked token: " + token);
                 } else {
                     out.writeUTF("ERROR|Token not found or access denied");
                 }
+
             } else if (command.startsWith("TOKENINFO|")) {
                 String[] parts = command.split("\\|");
                 if (parts.length != 2) {
@@ -264,6 +251,7 @@ public class ClientHandler implements Runnable {
                     return;
                 }
                 out.writeUTF(userStore.getTokenInfo(parts[1]));
+
             } else if (command.equals("QUIT")) {
                 out.writeUTF("OK|Goodbye " + loggedInUser);
 
