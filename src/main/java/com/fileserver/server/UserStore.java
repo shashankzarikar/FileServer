@@ -1,10 +1,10 @@
 package com.fileserver.server;
 
+import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.security.MessageDigest;
 
 public class UserStore {
 
@@ -198,7 +198,7 @@ public class UserStore {
             ResultSet rs = stmt.executeQuery();
 
             if (rs.next()) {
-                return new String[]{ rs.getString("owner"), rs.getString("filename") };
+                return new String[]{rs.getString("owner"), rs.getString("filename")};
             }
 
         } catch (Exception e) {

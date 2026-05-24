@@ -6,7 +6,10 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.layout.*;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
@@ -15,8 +18,6 @@ import javafx.stage.Stage;
 
 import java.io.*;
 import java.net.Socket;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 
 public class ClientApp extends Application {
 
@@ -342,7 +343,8 @@ public class ClientApp extends Application {
         try {
             if (out != null) out.writeUTF("QUIT");
             if (socket != null) socket.close();
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     // ── FILE OPERATIONS ──────────────────────────────────────────────
@@ -662,6 +664,7 @@ public class ClientApp extends Application {
             }).start();
         });
     }
+
     private void startHeartbeat() {
         Thread heartbeat = new Thread(() -> {
             while (connected && socket != null && !socket.isClosed()) {
@@ -700,6 +703,7 @@ public class ClientApp extends Application {
         heartbeat.setDaemon(true);
         heartbeat.start();
     }
+
     private void registerUser() {
         // Ask for username
         TextInputDialog usernameDialog = new TextInputDialog();

@@ -1,10 +1,6 @@
 package com.fileserver.server;
 
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.StandardOpenOption;
@@ -186,7 +182,6 @@ public class FileService {
                 totalSent += bytesRead;
             }
             out.flush();
-            System.out.println("[FileService] Sent " + totalSent + " bytes");
         }
     }
 }

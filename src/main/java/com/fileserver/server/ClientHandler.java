@@ -94,7 +94,8 @@ public class ClientHandler implements Runnable {
             try {
                 clientSocket.close();
                 logger.accept("[Server] Connection closed: " + loggedInUser);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -293,7 +294,10 @@ public class ClientHandler implements Runnable {
             }
 
         } catch (Exception e) {
-            try { out.writeUTF("ERROR|" + e.getMessage()); } catch (Exception ignored) {}
+            try {
+                out.writeUTF("ERROR|" + e.getMessage());
+            } catch (Exception ignored) {
+            }
         }
     }
 }
