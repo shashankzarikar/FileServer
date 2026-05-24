@@ -222,6 +222,12 @@ public class ClientHandler implements Runnable {
                     return;
                 }
                 String filename = parts[1];
+                // Check if filename contains / — means admin is trying to share another user's file
+                if (filename.contains("/")) {
+                    out.writeUTF("ERROR|You can only share your own files. Upload the file to your storage first.");
+                    return;
+                }
+
                 String checkResponse = fileService.prepareDownload(loggedInUser, filename);
                 if (!checkResponse.startsWith("SIZE|")) {
                     out.writeUTF("ERROR|File not found: " + filename);

@@ -182,7 +182,7 @@ public class ClientApp extends Application {
         fileListView.setStyle("-fx-font-family: 'Courier New'; -fx-font-size: 13;");
         VBox.setVgrow(fileListView, Priority.ALWAYS);
 
-        Label filesLabel = new Label("Your Files");
+        Label filesLabel = new Label(userRole.equals("ADMIN") ? "All Files" : "Your Files");
         filesLabel.setFont(Font.font("Arial", FontWeight.BOLD, 13));
         filesLabel.setTextFill(Color.web("#374151"));
 
