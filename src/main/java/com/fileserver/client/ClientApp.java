@@ -244,8 +244,21 @@ public class ClientApp extends Application {
         tokenInfoButton.setMaxWidth(Double.MAX_VALUE);
         tokenInfoButton.setOnAction(e -> checkTokenInfo());
 
+        Button registerButton = new Button("Register User");
+        registerButton.setStyle(
+                "-fx-background-color: #065F46; -fx-text-fill: white; " +
+                        "-fx-padding: 8 16 8 16; -fx-background-radius: 6;"
+        );
+        registerButton.setMaxWidth(Double.MAX_VALUE);
+        registerButton.setOnAction(e -> registerUser());
+
+// Only show register button for admin
+        registerButton.setVisible(userRole.equals("ADMIN"));
+        registerButton.setManaged(userRole.equals("ADMIN"));
+
         VBox actionButtons = new VBox(8,
-                uploadButton, downloadButton, deleteButton, shareButton, accessButton, tokenInfoButton
+                uploadButton, downloadButton, deleteButton, shareButton,
+                accessButton, tokenInfoButton, registerButton
         );
         actionButtons.setPrefWidth(130);
 
@@ -686,6 +699,56 @@ public class ClientApp extends Application {
         });
         heartbeat.setDaemon(true);
         heartbeat.start();
+    }
+    private void registerUser() {
+        // Ask for username
+        TextInputDialog usernameDialog = new TextInputDialog();
+        usernameDialog.setTitle("Register New User");
+        usernameDialog.setHeaderText("Create a new user account");
+        usernameDialog.setContentText("Username:");
+
+        usernameDialog.showAndWait().ifPresent(username -> {
+            if (username.trim().isEmpty()) return;
+
+            // Ask for password
+            TextInputDialog passwordDialog = new TextInputDialog();
+            passwordDialog.setTitle("Register New User");
+            passwordDialog.setHeaderText("Set password for: " + username);
+            passwordDialog.setContentText("Password:");
+
+            passwordDialog.showAndWait().ifPresent(password -> {
+                if (password.trim().isEmpty()) return;
+
+                new Thread(() -> {
+                    try {
+                        out.writeUTF("REGISTER|" + username.trim() + "|" + password.trim());
+                        String response = in.readUTF();
+                        Platform.runLater(() -> {
+                            log("Register: " + response);
+                            if (response.startsWith("OK")) {
+                                Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                                alert.setTitle("Success");
+                                alert.setHeaderText("User registered successfully");
+                                alert.setContentText(
+                                        "Username: " + username.trim() + "\n" +
+                                                "Password: " + password.trim() + "\n\n" +
+                                                "Share these credentials with the new user."
+                                );
+                                alert.showAndWait();
+                            } else {
+                                Alert alert = new Alert(Alert.AlertType.ERROR);
+                                alert.setTitle("Registration Failed");
+                                alert.setHeaderText("Could not register user");
+                                alert.setContentText(response.replace("ERROR|", ""));
+                                alert.showAndWait();
+                            }
+                        });
+                    } catch (Exception e) {
+                        log("Register error: " + e.getMessage());
+                    }
+                }).start();
+            });
+        });
     }
 
     public static void main(String[] args) {
