@@ -21,25 +21,25 @@ public class UserStore {
 
     private void initDatabase() {
         String createUsers = """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'USER',
-                created_at TEXT DEFAULT (datetime('now'))
-            )
-            """;
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'USER',
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+                """;
 
         String createShares = """
-            CREATE TABLE IF NOT EXISTS shares (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                token TEXT UNIQUE NOT NULL,
-                owner TEXT NOT NULL,
-                filename TEXT NOT NULL,
-                created_at TEXT DEFAULT (datetime('now')),
-                expires_at TEXT NOT NULL
-            )
-            """;
+                CREATE TABLE IF NOT EXISTS shares (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    token TEXT UNIQUE NOT NULL,
+                    owner TEXT NOT NULL,
+                    filename TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    expires_at TEXT NOT NULL
+                )
+                """;
 
         try (Connection conn = connect()) {
             conn.prepareStatement(createUsers).execute();
@@ -89,7 +89,7 @@ public class UserStore {
         return false;
     }
 
-    public boolean registerUser(String username, String password) {
+    public synchronized boolean registerUser(String username, String password) {
         String insert = "INSERT INTO users (username, password, role) VALUES (?, ?, 'USER')";
 
         try (Connection conn = connect();
@@ -101,7 +101,6 @@ public class UserStore {
             return true;
 
         } catch (Exception e) {
-            // UNIQUE constraint violation means username already exists
             System.out.println("[UserStore] Register error: " + e.getMessage());
             return false;
         }
@@ -141,19 +140,6 @@ public class UserStore {
         return false;
     }
 
-    private String sha256(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(input.getBytes());
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hashBytes) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (Exception e) {
-            throw new RuntimeException("SHA-256 not available", e);
-        }
-    }
     public String listUsers() {
         String query = "SELECT username, role, created_at FROM users";
         StringBuilder sb = new StringBuilder("USERS|");
@@ -174,14 +160,14 @@ public class UserStore {
         }
         return sb.toString();
     }
-    public String createShareToken(String owner, String filename) {
-        // Generate a random 8-character token
+
+    public synchronized String createShareToken(String owner, String filename) {
         String token = java.util.UUID.randomUUID().toString().substring(0, 8);
 
         String insert = """
-            INSERT INTO shares (token, owner, filename, expires_at)
-            VALUES (?, ?, ?, datetime('now', '+24 hours'))
-            """;
+                INSERT INTO shares (token, owner, filename, expires_at)
+                VALUES (?, ?, ?, datetime('now', '+24 hours'))
+                """;
 
         try (Connection conn = connect();
              PreparedStatement stmt = conn.prepareStatement(insert)) {
@@ -199,12 +185,11 @@ public class UserStore {
     }
 
     public String[] resolveShareToken(String token) {
-        // Returns [owner, filename] if token is valid and not expired, null otherwise
         String query = """
-            SELECT owner, filename FROM shares
-            WHERE token = ?
-            AND datetime('now') < datetime(expires_at)
-            """;
+                SELECT owner, filename FROM shares
+                WHERE token = ?
+                AND datetime('now') < datetime(expires_at)
+                """;
 
         try (Connection conn = connect();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -222,8 +207,7 @@ public class UserStore {
         return null;
     }
 
-    public boolean revokeShareToken(String token, String requestingUser) {
-        // Only the owner or admin can revoke a token
+    public synchronized boolean revokeShareToken(String token, String requestingUser) {
         String query = "SELECT owner FROM shares WHERE token = ?";
         String delete = "DELETE FROM shares WHERE token = ?";
 
@@ -249,12 +233,13 @@ public class UserStore {
             return false;
         }
     }
+
     public String getTokenInfo(String token) {
         String query = """
-            SELECT owner, filename, expires_at FROM shares
-            WHERE token = ?
-            AND datetime('now') < datetime(expires_at)
-            """;
+                SELECT owner, filename, expires_at FROM shares
+                WHERE token = ?
+                AND datetime('now') < datetime(expires_at)
+                """;
 
         try (Connection conn = connect();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -272,5 +257,19 @@ public class UserStore {
             System.out.println("[UserStore] TokenInfo error: " + e.getMessage());
         }
         return "ERROR|Invalid or expired token";
+    }
+
+    private String sha256(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashBytes = digest.digest(input.getBytes());
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hashBytes) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
     }
 }
