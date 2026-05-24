@@ -38,6 +38,8 @@ public class ClientApp extends Application {
     private ProgressBar progressBar;
     private Label progressLabel;
 
+    private volatile boolean connected = false;
+
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
@@ -296,6 +298,7 @@ public class ClientApp extends Application {
         // Load files immediately
         refreshFileList();
         log("Connected as " + loggedInUser + " [" + userRole + "]");
+        startHeartbeat();
     }
 
     // ── NETWORK ──────────────────────────────────────────────────────
@@ -311,6 +314,7 @@ public class ClientApp extends Application {
             if (response.startsWith("OK")) {
                 loggedInUser = username;
                 userRole = response.contains("ADMIN") ? "ADMIN" : "USER";
+                connected = true;
                 return response;
             }
             return response.replace("OK|", "").replace("ERROR|", "");
@@ -321,6 +325,7 @@ public class ClientApp extends Application {
     }
 
     private void disconnect() {
+        connected = false;
         try {
             if (out != null) out.writeUTF("QUIT");
             if (socket != null) socket.close();
@@ -643,6 +648,44 @@ public class ClientApp extends Application {
                 }
             }).start();
         });
+    }
+    private void startHeartbeat() {
+        Thread heartbeat = new Thread(() -> {
+            while (connected && socket != null && !socket.isClosed()) {
+                try {
+                    Thread.sleep(60000); // ping every 60 seconds
+                    if (!connected) break;
+
+                    out.writeUTF("PING");
+                    String response = in.readUTF();
+
+                    if (!response.equals("PONG")) {
+                        Platform.runLater(() -> {
+                            statusLabel.setText("● Disconnected");
+                            statusLabel.setTextFill(Color.web("#DC2626"));
+                            log("Connection lost — server did not respond to heartbeat.");
+                        });
+                        connected = false;
+                        break;
+                    }
+
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Exception e) {
+                    if (connected) {
+                        Platform.runLater(() -> {
+                            statusLabel.setText("● Disconnected");
+                            statusLabel.setTextFill(Color.web("#DC2626"));
+                            log("Connection lost: " + e.getMessage());
+                        });
+                    }
+                    connected = false;
+                    break;
+                }
+            }
+        });
+        heartbeat.setDaemon(true);
+        heartbeat.start();
     }
 
     public static void main(String[] args) {

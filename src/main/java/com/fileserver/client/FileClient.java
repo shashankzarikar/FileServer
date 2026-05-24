@@ -53,6 +53,29 @@ public class FileClient {
             System.out.println("[Client] Authenticated!");
             System.out.println("Commands: LIST | UPLOAD|filepath | DOWNLOAD|filename | DELETE|filename | QUIT");
 
+            // Start heartbeat thread to keep connection alive
+            Thread heartbeat = new Thread(() -> {
+                while (!socket.isClosed()) {
+                    try {
+                        Thread.sleep(60000);
+                        if (socket.isClosed()) break;
+                        out.writeUTF("PING");
+                        String pong = in.readUTF();
+                        if (!pong.equals("PONG")) {
+                            System.out.println("[Client] Connection lost — server not responding.");
+                            break;
+                        }
+                    } catch (InterruptedException e) {
+                        break;
+                    } catch (Exception e) {
+                        System.out.println("[Client] Connection lost: " + e.getMessage());
+                        break;
+                    }
+                }
+            });
+            heartbeat.setDaemon(true);
+            heartbeat.start();
+
             while (true) {
                 System.out.print("> ");
                 String input = scanner.nextLine().trim();
@@ -65,6 +88,7 @@ public class FileClient {
                 } else if (input.startsWith("REGISTER|")) {
                 out.writeUTF(input);
                 System.out.println("[Client] Server: " + in.readUTF());
+
                 }else if (input.equals("LIST")) {
                     out.writeUTF("LIST");
                     System.out.println("[Client] Server: " + in.readUTF());

@@ -3,6 +3,7 @@ package com.fileserver.server;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 
 public class ClientHandler implements Runnable {
 
@@ -32,6 +33,10 @@ public class ClientHandler implements Runnable {
         logger.accept("[Server] Client connected: " + clientIP);
 
         try {
+            // 2 minute idle timeout — heartbeat keeps connection alive
+            // If client crashes, server cleans up after 2 minutes
+            clientSocket.setSoTimeout(2 * 60 * 1000);
+
             DataInputStream in = new DataInputStream(clientSocket.getInputStream());
             DataOutputStream out = new DataOutputStream(clientSocket.getOutputStream());
 
@@ -71,6 +76,7 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
+            // Command loop
             while (true) {
                 String command = in.readUTF();
                 logger.accept("[" + loggedInUser + "] Command: " + command);
@@ -78,6 +84,10 @@ public class ClientHandler implements Runnable {
                 if (command.equals("QUIT")) break;
             }
 
+        } catch (SocketTimeoutException e) {
+            // Client went silent for 2 minutes — likely crashed or disconnected
+            logger.accept("[Server] Client timed out (2min silence): " + clientIP
+                    + " User: " + loggedInUser);
         } catch (Exception e) {
             logger.accept("[Server] Error with client: " + e.getMessage());
         } finally {
@@ -90,7 +100,11 @@ public class ClientHandler implements Runnable {
 
     private void handleCommand(String command, DataInputStream in, DataOutputStream out) {
         try {
-            if (command.equals("LIST")) {
+            if (command.equals("PING")) {
+                // Heartbeat — keep connection alive
+                out.writeUTF("PONG");
+
+            } else if (command.equals("LIST")) {
                 if (userRole.equals("ADMIN")) {
                     out.writeUTF(fileService.listAllFiles());
                 } else {
@@ -113,8 +127,14 @@ public class ClientHandler implements Runnable {
                 String filename = parts[1];
                 long fileSize = Long.parseLong(parts[2]);
                 out.writeUTF("READY");
+
+                // Disable timeout during file transfer — large files take time
+                clientSocket.setSoTimeout(0);
                 String result = fileService.receiveFile(loggedInUser, filename,
                         fileSize, clientSocket.getInputStream());
+                // Re-enable timeout after transfer
+                clientSocket.setSoTimeout(2 * 60 * 1000);
+
                 out.writeUTF(result);
                 logger.accept("[" + loggedInUser + "] Upload result: " + result);
 
@@ -147,8 +167,15 @@ public class ClientHandler implements Runnable {
                 if (!sizeResponse.startsWith("SIZE|")) return;
                 String ready = in.readUTF();
                 if (!ready.equals("READY")) return;
+
                 logger.accept("[" + loggedInUser + "] Downloading: " + filename);
+
+                // Disable timeout during file transfer
+                clientSocket.setSoTimeout(0);
                 fileService.sendFile(targetUser, filename, out);
+                // Re-enable timeout after transfer
+                clientSocket.setSoTimeout(2 * 60 * 1000);
+
                 logger.accept("[" + loggedInUser + "] Download complete: " + filename);
 
             } else if (command.startsWith("DELETE|")) {
@@ -226,9 +253,15 @@ public class ClientHandler implements Runnable {
                 if (!sizeResponse.startsWith("SIZE|")) return;
                 String ready = in.readUTF();
                 if (!ready.equals("READY")) return;
+
                 logger.accept("[" + loggedInUser + "] Accessing shared file: "
                         + owner + "/" + filename + " via token: " + token);
+
+                // Disable timeout during file transfer
+                clientSocket.setSoTimeout(0);
                 fileService.sendFile(owner, filename, out);
+                // Re-enable timeout after transfer
+                clientSocket.setSoTimeout(2 * 60 * 1000);
 
             } else if (command.startsWith("REVOKE|")) {
                 String[] parts = command.split("\\|");
