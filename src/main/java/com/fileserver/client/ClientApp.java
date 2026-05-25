@@ -257,9 +257,21 @@ public class ClientApp extends Application {
         registerButton.setVisible(userRole.equals("ADMIN"));
         registerButton.setManaged(userRole.equals("ADMIN"));
 
+        Button listUsersButton = new Button("List Users");
+        listUsersButton.setStyle(
+                "-fx-background-color: #374151; -fx-text-fill: white; " +
+                        "-fx-padding: 8 16 8 16; -fx-background-radius: 6;"
+        );
+        listUsersButton.setMaxWidth(Double.MAX_VALUE);
+        listUsersButton.setOnAction(e -> listUsers());
+
+// Only show for admin
+        listUsersButton.setVisible(userRole.equals("ADMIN"));
+        listUsersButton.setManaged(userRole.equals("ADMIN"));
+
         VBox actionButtons = new VBox(8,
                 uploadButton, downloadButton, deleteButton, shareButton,
-                accessButton, tokenInfoButton, registerButton
+                accessButton, tokenInfoButton, registerButton, listUsersButton
         );
         actionButtons.setPrefWidth(130);
 
@@ -753,6 +765,32 @@ public class ClientApp extends Application {
                 }).start();
             });
         });
+    }
+    private void listUsers() {
+        new Thread(() -> {
+            try {
+                out.writeUTF("LISTUSERS");
+                String response = in.readUTF();
+                Platform.runLater(() -> {
+                    if (response.startsWith("USERS|")) {
+                        String[] users = response.replace("USERS|", "").split(",");
+                        StringBuilder sb = new StringBuilder();
+                        for (String user : users) {
+                            sb.append("• ").append(user).append("\n");
+                        }
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                        alert.setTitle("Registered Users");
+                        alert.setHeaderText("All users on this server");
+                        alert.setContentText(sb.toString());
+                        alert.showAndWait();
+                    } else {
+                        log("List users: " + response);
+                    }
+                });
+            } catch (Exception e) {
+                log("List users error: " + e.getMessage());
+            }
+        }).start();
     }
 
     public static void main(String[] args) {
