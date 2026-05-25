@@ -19,3 +19,5 @@ data/
 
 # Logs
 *.log
+
+dependency-reduced-pom.xml
