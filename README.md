@@ -22,7 +22,7 @@ FileServer works like a company internal file server — one machine runs the se
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    LAN Network                       │
+│                    LAN Network                      │
 │                                                     │
 │  ┌──────────────────┐         ┌──────────────────┐  │
 │  │   ServerApp      │◄───────►│   ClientApp      │  │
